@@ -20,7 +20,7 @@ class CRM_Historicalmemberships_Form_Search_MembershipSearch extends CRM_Contact
    * @return void
    */
   function buildForm(&$form) {
-    CRM_Utils_System::setTitle(E::ts('Find Current Members on a specific date'));
+    CRM_Utils_System::setTitle(E::ts('Find Members'));
     $form->add('datepicker', 'active_on', E::ts('Active on'), [], TRUE, ['time' => FALSE]);
     $membershipTypes = CRM_Member_PseudoConstant::membershipType();
     $form->add('select', 'membership_type_id', ts('Membership Type'), $membershipTypes, FALSE,
@@ -56,9 +56,14 @@ class CRM_Historicalmemberships_Form_Search_MembershipSearch extends CRM_Contact
       E::ts('Contact Id') => 'contact_id',
       E::ts('Name') => 'sort_name',
       E::ts('Email') => 'primary_email',
+	  E::ts('Title') => 'title',
+	  E::ts('Credentials') => 'professional_credentials',
+	  E::ts('City') => 'city',
+	  E::ts('State') => 'state',
+	  E::ts('Country') => 'country',
 	  E::ts('Membership Type') => 'membership_type',
 	  E::ts('Membership Status') => 'membership_status',
-      E::ts('Membership ID') => 'membership_id',
+      E::ts('Membership ID') => 'membership_id'
     );
     return $columns;
   }
@@ -87,12 +92,17 @@ class CRM_Historicalmemberships_Form_Search_MembershipSearch extends CRM_Contact
    */
   function select() {
     return " DISTINCT
-      contact_a.id           as contact_id  ,
+      contact_a.id as contact_id  ,
 	  mt.name as membership_type,
 	  ms.label as membership_status,
       contact_a.sort_name    as sort_name,
 	  ce.email as primary_email,
-      m.id as membership_id
+	  contact_a.job_title as title,
+      m.id as membership_id,
+	  UPPER(REPLACE(TRIM(REPLACE(`additional_information`.`professional_credentials_63`,'" . \CRM_Core_DAO::VALUE_SEPARATOR . "', ' ')),' ',', ')) AS professional_credentials,
+	  `address_primary`.`city` AS city,
+	  sp.name AS 'state',
+	  country.name AS country
     ";
   }
 
@@ -132,7 +142,11 @@ class CRM_Historicalmemberships_Form_Search_MembershipSearch extends CRM_Contact
 		left join (Select cml.* From civicrm_membership_log as cml inner join ( Select max(id) as id, membership_id from ( Select id, membership_id from civicrm_membership_log %s order by membership_id ) as a group by membership_id ) as fml on cml.id = fml.id ) as ml on ml.membership_id = m.id
 		INNER JOIN civicrm_membership_status as ms on ms.id = ml.status_id
 		INNER JOIN civicrm_membership_type as mt on mt.id = ml.membership_type_id
-		LEFT JOIN civicrm_email as ce on ce.contact_id = contact_a.id";
+		LEFT JOIN civicrm_email as ce on ce.contact_id = contact_a.id
+		LEFT JOIN `civicrm_address` as `address_primary` ON `contact_a`.`id` =  `address_primary`.`contact_id` AND `address_primary`.`is_primary` = 1
+		LEFT JOIN `civicrm_value_additional_in_9` as `additional_information` ON `contact_a`.`id` =  `additional_information`.`entity_id`
+		LEFT JOIN `civicrm_state_province` `sp` ON sp.id = `address_primary`.`state_province_id`
+		LEFT JOIN `civicrm_country` as `country` ON country.id = `address_primary`.`country_id`";
 
 	return sprintf( $from, $fromWhere);
   }
