@@ -21,17 +21,27 @@ class CRM_Historicalmemberships_Form_Search_MembershipSearch extends CRM_Contact
    */
   function buildForm(&$form) {
     CRM_Utils_System::setTitle(E::ts('Find Members'));
-    $form->add('datepicker', 'active_on', E::ts('Active on'), [], TRUE, ['time' => FALSE]);
+	$current_year = date('Y');
+	$report_years = [];
+	for ( $i = 2021; $i < $current_year; $i++ ) {
+		$report_years[$i] = $i;
+	}
+	$report_years[$current_year] = $current_year;
+    // $form->add('datepicker', 'active_on', E::ts('Active on'), [], TRUE, ['time' => FALSE]);
+	$form->add('select', 'report_year', ts('Report Year'), $report_years, FALSE,
+		['multiple' => 0, 'class' => 'srm-select2', 'placeholder' => ts('- select -')]
+	);
     $membershipTypes = CRM_Member_PseudoConstant::membershipType();
     $form->add('select', 'membership_type_id', ts('Membership Type'), $membershipTypes, FALSE,
-      ['multiple' => 1, 'class' => 'crm-select2', 'placeholder' => ts('- select -')]
+      ['multiple' => 0, 'class' => 'crm-select2', 'placeholder' => ts('- select -')]
     );
 	$membershipStatuses = CRM_Member_PseudoConstant::membershipStatus();
+	unset( $membershipStatuses[8] );
     $form->add('select', 'membership_status_id', ts('Membership Status'), $membershipStatuses, FALSE,
       ['multiple' => 1, 'class' => 'crm-select2', 'placeholder' => ts('- select -')]
     );
     // $form->addYesNo('member_is_primary', ts('Primary Member?'), TRUE);
-    $form->assign('elements', array('active_on', 'membership_type_id', 'membership_status_id'));
+    $form->assign('elements', array('report_year', 'membership_type_id', 'membership_status_id'));
   }
 
   /**
@@ -114,41 +124,161 @@ class CRM_Historicalmemberships_Form_Search_MembershipSearch extends CRM_Contact
    */
   function from() {
 	$params = [];
+	$clause = [];
+	$log_filter = '';
 	$where = '';
 
-	if (!empty($this->_formValues['membership_type_id'])) {
-		$clause[] = "membership_type_id IN (" . implode(',', $this->_formValues['membership_type_id']) . ")";
-	}
-	$activeOn = date('Y-m-d', strtotime($this->_formValues['active_on']));
-	$params[1] = [$activeOn, 'String'];
+	$membership_type = $this->_formValues['membership_type_id'];
+	$clause[] = "b.membership_type_id = " . $membership_type;
+
+	// $activeOn = date('Y-m-d', strtotime($this->_formValues['active_on']));
+	// $params[1] = [$activeOn, 'String'];
 	if (!empty($this->_formValues['membership_status_id'])) {
-		$clause[] = "status_id IN (" . implode(',', $this->_formValues['membership_status_id']) . ")";
-	}
-	if ($activeOn) {
-		$clause[] = "( modified_date <= %1 AND DATE_SUB(%1, INTERVAL 1 YEAR ) )"; // AND (end_date >= %1 or end_date IS NULL)";
-	}
-
-	if (!empty($clause)) {
-		$where .= implode(' AND ', $clause);
+		if ( is_array( $this->_formValues['membership_status_id'] ) ) {
+			$clause[] = "b.status_id IN (" . implode(',', $this->_formValues['membership_status_id']) . ")";
+		} else {
+			$clause[] = "b.status_id IN (" . $this->_formValues['membership_status_id'] . ")";
+		}
 	}
 
-	$fromWhere = CRM_Core_DAO::composeQuery($where, $params, TRUE);
-	if ( !empty( $fromWhere ) ) {
-		$fromWhere = ' Where ' . $fromWhere;
-	}
+	if ( in_array( $membership_type, array( 1, 3 ) ) ) {
+		// if ($activeOn) {
+		// 	$log_filter = "Where modified_date <= %1 AND modified_date > DATE_SUB(%1, INTERVAL 1 YEAR )";
+		// 	$log_filter = CRM_Core_DAO::composeQuery($log_filter, $params, TRUE);
+		// }
 
-	$from = "FROM civicrm_contact as contact_a
+		if (!empty($clause)) {
+			$where .= implode(' AND ', $clause);
+		}
+
+		if ( !empty( $this->_formValues['report_year'] ) ) {
+			$report_year = intval( $this->_formValues['report_year'] );
+			$log_filter = "Where modified_date <= %1 AND modified_date > %2";
+			$params[1] = [ date('Y-m-d', mktime( 0, 0, 0, 12, 31, $report_year ) ), 'String'];
+			$params[2] = [ date('Y-m-d', mktime( 0, 0, 0, 10, 01, ( $report_year - 1 ) ) ), 'String'];
+			$log_filter = CRM_Core_DAO::composeQuery($log_filter, $params, TRUE);
+		}
+
+		// $fromWhere = CRM_Core_DAO::composeQuery($where, $params, TRUE);
+		if ( !empty( $where ) ) {
+			$fromWhere = ' Where ' . $where;
+		}
+
+		$from = "FROM civicrm_contact as contact_a
 		INNER JOIN civicrm_membership m ON (m.contact_id = contact_a.id)
-		left join (Select cml.* From civicrm_membership_log as cml inner join ( Select max(id) as id, membership_id from ( Select id, membership_id from civicrm_membership_log %s order by membership_id ) as a group by membership_id ) as fml on cml.id = fml.id ) as ml on ml.membership_id = m.id
-		INNER JOIN civicrm_membership_status as ms on ms.id = ml.status_id
-		INNER JOIN civicrm_membership_type as mt on mt.id = ml.membership_type_id
-		LEFT JOIN civicrm_email as ce on ce.contact_id = contact_a.id
-		LEFT JOIN `civicrm_address` as `address_primary` ON `contact_a`.`id` =  `address_primary`.`contact_id` AND `address_primary`.`is_primary` = 1
-		LEFT JOIN `civicrm_value_additional_in_9` as `additional_information` ON `contact_a`.`id` =  `additional_information`.`entity_id`
-		LEFT JOIN `civicrm_state_province` `sp` ON sp.id = `address_primary`.`state_province_id`
-		LEFT JOIN `civicrm_country` as `country` ON country.id = `address_primary`.`country_id`";
+		left join (
+					Select cml.* From civicrm_membership_log as cml inner join ( Select id, membership_id, modified_date
+				from (
+								Select id, membership_type_id, status_id, modified_date, membership_id
+					from civicrm_membership_log as a
+					Where id in ( Select max(id)
+					from civicrm_membership_log
+					%s
+					group by membership_id )
+							) as b
+				%s )
+					as fml on cml.id = fml.id )
+				as ml on ml.membership_id = m.id
+			INNER JOIN civicrm_membership_status as ms on ms.id = ml.status_id
+			INNER JOIN civicrm_membership_type as mt on mt.id = ml.membership_type_id
+			LEFT JOIN civicrm_email as ce on ce.contact_id = contact_a.id
+			LEFT JOIN `civicrm_address` as `address_primary` ON `contact_a`.`id` =  `address_primary`.`contact_id` AND `address_primary`.`is_primary` = 1
+			LEFT JOIN `civicrm_value_additional_in_9` as `additional_information` ON `contact_a`.`id` =  `additional_information`.`entity_id`
+			LEFT JOIN `civicrm_state_province` as `sp` ON sp.id = `address_primary`.`state_province_id`
+			LEFT JOIN `civicrm_country` as `country` ON country.id = `address_primary`.`country_id`";
 
-	return sprintf( $from, $fromWhere);
+		// error_log( 'MemberSearch::from: ' . sprintf( $from, $log_filter, $fromWhere) );
+		return sprintf( $from, $log_filter, $fromWhere);
+	} else /*if ( 7 === $membership_type ) */{
+		//Junior search
+
+		if ( !empty( $this->_formValues['report_year'] ) ) {
+			$report_year = intval( $this->_formValues['report_year'] );
+			$log_filter = "Where modified_date <= %1";
+			$params[1] = [ date('Y-m-d', mktime( 0, 0, 0, 12, 31, $report_year ) ), 'String'];
+			$log_filter = CRM_Core_DAO::composeQuery($log_filter, $params, TRUE);
+		}
+
+		if (!empty($clause)) {
+			$where .= implode(' AND ', $clause);
+		}
+
+		// $fromWhere = CRM_Core_DAO::composeQuery($where, $params, TRUE);
+		if ( !empty( $where ) ) {
+			$fromWhere = ' Where ' . $where;
+		}
+
+		$from = "FROM civicrm_contact as contact_a
+		INNER JOIN civicrm_membership m ON (m.contact_id = contact_a.id)
+		left join (
+					Select cml.* From civicrm_membership_log as cml inner join ( Select id, membership_id, modified_date
+				from (
+								Select id, membership_type_id, status_id, modified_date, membership_id
+					from civicrm_membership_log as a
+					Where id in ( Select max(id)
+					from civicrm_membership_log
+					%s
+					group by membership_id )
+							) as b
+				%s )
+					as fml on cml.id = fml.id )
+				as ml on ml.membership_id = m.id
+			INNER JOIN civicrm_membership_status as ms on ms.id = ml.status_id
+			INNER JOIN civicrm_membership_type as mt on mt.id = ml.membership_type_id
+			LEFT JOIN civicrm_email as ce on ce.contact_id = contact_a.id
+			LEFT JOIN `civicrm_address` as `address_primary` ON `contact_a`.`id` =  `address_primary`.`contact_id` AND `address_primary`.`is_primary` = 1
+			LEFT JOIN `civicrm_value_additional_in_9` as `additional_information` ON `contact_a`.`id` =  `additional_information`.`entity_id`
+			LEFT JOIN `civicrm_state_province` as `sp` ON sp.id = `address_primary`.`state_province_id`
+			LEFT JOIN `civicrm_country` as `country` ON country.id = `address_primary`.`country_id`";
+
+		// error_log( 'MemberSearch::from: ' . sprintf( $from, $log_filter, $fromWhere) );
+		return sprintf( $from, $log_filter, $fromWhere);
+	}
+	// else {
+	// 	//All others that don't have status rules
+	// 	if (!empty($clause)) {
+	// 		$where .= implode(' AND ', $clause);
+	// 	}
+
+	// 	if ( !empty( $this->_formValues['report_year'] ) ) {
+	// 		$report_year = intval( $this->_formValues['report_year'] );
+	// 		$log_filter = "Where modified_date <= %1";
+	// 		$params[1] = [ date('Y-m-d', mktime( 0, 0, 0, 12, 31, $report_year ) ), 'String'];
+	// 		$log_filter = CRM_Core_DAO::composeQuery($log_filter, $params, TRUE);
+	// 	}
+
+	// 	// $fromWhere = CRM_Core_DAO::composeQuery($where, $params, TRUE);
+	// 	if ( !empty( $where ) ) {
+	// 		$fromWhere = ' Where ' . $where;
+	// 	}
+
+	// 	$from = "FROM civicrm_contact as contact_a
+	// 	INNER JOIN civicrm_membership m ON (m.contact_id = contact_a.id)
+	// 	left join (
+	// 				Select cml.* From civicrm_membership_log as cml inner join ( Select id, membership_id, modified_date
+	// 			from (
+	// 							Select id, membership_type_id, status_id, modified_date, membership_id
+	// 				from civicrm_membership_log as a
+	// 				Where id in ( Select max(id)
+	// 				from civicrm_membership_log
+	// 				%s
+	// 				group by membership_id )
+	// 						) as b
+	// 			%s )
+	// 				as fml on cml.id = fml.id )
+	// 			as ml on ml.membership_id = m.id
+	// 		INNER JOIN civicrm_membership_status as ms on ms.id = ml.status_id
+	// 		INNER JOIN civicrm_membership_type as mt on mt.id = ml.membership_type_id
+	// 		LEFT JOIN civicrm_email as ce on ce.contact_id = contact_a.id
+	// 		LEFT JOIN `civicrm_address` as `address_primary` ON `contact_a`.`id` =  `address_primary`.`contact_id` AND `address_primary`.`is_primary` = 1
+	// 		LEFT JOIN `civicrm_value_additional_in_9` as `additional_information` ON `contact_a`.`id` =  `additional_information`.`entity_id`
+	// 		LEFT JOIN `civicrm_state_province` as `sp` ON sp.id = `address_primary`.`state_province_id`
+	// 		LEFT JOIN `civicrm_country` as `country` ON country.id = `address_primary`.`country_id`";
+
+	// 	// error_log( 'MemberSearch::from: ' . sprintf( $from, $log_filter, $fromWhere) );
+	// 	return sprintf( $from, $log_filter, $fromWhere);
+	// }
+
   }
 
   /**
@@ -166,6 +296,7 @@ class CRM_Historicalmemberships_Form_Search_MembershipSearch extends CRM_Contact
 	$clause[] = "ce.email not like '%@graydigitalgroup.com'";
 	$clause[] = "ce.email not like '%@crusonweb.com'";
 	$clause[] = "ce.email not like '%@higherlogic.com'";
+	$clause[] = "ce.email not like '%@nonprofitcms.org'";
 
     // if (!CRM_Utils_System::isNull($this->_formValues['member_is_primary'])) {
     //   if (!empty($this->_formValues['member_is_primary'])) {
@@ -200,4 +331,55 @@ class CRM_Historicalmemberships_Form_Search_MembershipSearch extends CRM_Contact
   // function alterRow(&$row) {
   //   $row['sort_name'] .= ' ( altered )';
   // }
+
+  /**
+   * Validate form input.
+   *
+   * @param array $fields
+   * @param array $files
+   * @param CRM_Core_Form $self
+   *
+   * @return array
+   *   Input errors from the form.
+   */
+  public function formRule($fields, $files, $self) {
+	if ( empty( $fields['report_year'] ) ) {
+		return ['report_year' => 'Please select a year'];
+	}
+	if ( empty( $fields['membership_type_id'] ) ) {
+		return ['membership_type_id' => 'Membership Type cannont be empty.'];
+	}
+
+	if ( !empty( $fields['membership_type_id'] ) ) {
+		$membership = $fields['membership_type_id'];
+		$statuses = $fields['membership_status_id'];
+		if ( !empty( $statuses ) ) {
+			$status_ids = array( 1 => 'New', 2 => 'Current', 3 => 'Grace', 9 => 'In Arrears', 4 => 'Expired', 5 => 'Pending', 6 => 'Cancelled', 7 => 'Deceased' );
+			$status_rules_allowed = array(
+				1 => array( 1, 2, 3, 4, 5, 6, 7, 9 ),   //Active
+				2 => array( 1, 2, 4, 6, 7 ),   //Site-Admin
+				3 => array( 1, 2, 3, 4, 5, 6, 7, 9 ),   //Affiliate
+				4 => array( 1, 2, 4, 6, 7 ),   //Central Office
+				5 => array( 1, 2, 4, 6, 7 ),   //Honorary
+				6 => array( 1, 2, 4, 6, 7 ),   //Emeritus
+				7 => array( 1, 2, 3, 4, 6, 7 ),   //Junior
+				8 => array( 1, 2, 4, 6, 7 ),   //Medical Student
+				9 => array( 1, 2, 4, 6, 7 ),   //Education Membership
+				11 => array( 1, 2, 3, 4, 5, 6, 7),   //PECN
+				12 => array( 1, 2, 4, 6, 7 ),   //Central Office - Web Admin
+			);
+			$allowed_statuses = $status_rules_allowed[$membership];
+			$not_allowed_statuses = array_diff( $statuses, $allowed_statuses );
+			if ( count( $not_allowed_statuses ) ) {
+				$bad_statuses = [];
+				foreach( $not_allowed_statuses as $status_id ) {
+					$bad_statuses[] = $status_ids[$status_id];
+				}
+				return ['membership_status_id' => 'These Statuses are not allowed for this membership type: ' . implode( ', ', $bad_statuses ) ];
+			}
+		}
+	}
+
+	return [];
+  }
 }
