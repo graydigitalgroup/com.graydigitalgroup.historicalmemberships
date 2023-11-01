@@ -35,7 +35,7 @@ class CRM_Historicalmemberships_Form_Search_MembershipSearch extends CRM_Contact
     $form->add('select', 'membership_type_id', ts('Membership Type'), $membershipTypes, FALSE,
       ['multiple' => 0, 'class' => 'crm-select2', 'placeholder' => ts('- select -')]
     );
-	$membershipStatuses = CRM_Member_PseudoConstant::membershipStatus();
+	$membershipStatuses = CRM_Member_PseudoConstant::membershipStatus( null, null, 'name', false, true);
 	unset( $membershipStatuses[8] );
     $form->add('select', 'membership_status_id', ts('Membership Status'), $membershipStatuses, FALSE,
       ['multiple' => 1, 'class' => 'crm-select2', 'placeholder' => ts('- select -')]
@@ -354,19 +354,36 @@ class CRM_Historicalmemberships_Form_Search_MembershipSearch extends CRM_Contact
 		$membership = $fields['membership_type_id'];
 		$statuses = $fields['membership_status_id'];
 		if ( !empty( $statuses ) ) {
-			$status_ids = array( 1 => 'New', 2 => 'Current', 3 => 'Grace', 9 => 'In Arrears', 4 => 'Expired', 5 => 'Pending', 6 => 'Cancelled', 7 => 'Deceased' );
+			$status_ids = array(
+				1 => 'New',
+				2 => 'Current',
+				3 => 'Grace',
+				4 => 'Expired',
+				5 => 'Pending',
+				6 => 'Cancelled',
+				7 => 'Deceased',
+				9 => 'In Arrears',
+				10 => 'Junior Pending',
+				11 => 'Junior New',
+				12 => 'Junior Current',
+				13 => 'Junior Grace',
+				14 => 'Junior Dropped',
+				15 => 'Archived',
+				16 => 'Dropped',
+				17 => 'Medical Student Current'
+			);
 			$status_rules_allowed = array(
-				1 => array( 1, 2, 3, 4, 5, 6, 7, 9 ),   //Active
-				2 => array( 1, 2, 4, 6, 7 ),   //Site-Admin
-				3 => array( 1, 2, 3, 4, 5, 6, 7, 9 ),   //Affiliate
-				4 => array( 1, 2, 4, 6, 7 ),   //Central Office
-				5 => array( 1, 2, 4, 6, 7 ),   //Honorary
-				6 => array( 1, 2, 4, 6, 7 ),   //Emeritus
-				7 => array( 1, 2, 3, 4, 6, 7 ),   //Junior
-				8 => array( 1, 2, 4, 6, 7 ),   //Medical Student
-				9 => array( 1, 2, 4, 6, 7 ),   //Education Membership
+				1 => array( 1, 2, 3, 4, 5, 6, 7, 9, 15, 16 ),   //Active
+				2 => array( 1, 2, 6, 7 ),   //Site-Admin
+				3 => array( 1, 2, 3, 4, 5, 6, 7, 9, 15, 16 ),   //Affiliate
+				4 => array( 1, 2, 6, 7 ),   //Central Office
+				5 => array( 2, 6, 7 ),   //Honorary
+				6 => array( 2, 6, 7 ),   //Emeritus
+				7 => array( 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16 ),   //Junior
+				8 => array( 1, 2, 6, 7, 15, 16, 17 ),   //Medical Student
+				9 => array( 2, 6, 7 ),   //Education Membership
 				11 => array( 1, 2, 3, 4, 5, 6, 7),   //PECN
-				12 => array( 1, 2, 4, 6, 7 ),   //Central Office - Web Admin
+				12 => array( 1, 2, 6, 7 ),   //Central Office - Web Admin
 			);
 			$allowed_statuses = $status_rules_allowed[$membership];
 			$not_allowed_statuses = array_diff( $statuses, $allowed_statuses );
