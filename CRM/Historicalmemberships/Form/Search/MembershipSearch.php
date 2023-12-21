@@ -370,7 +370,8 @@ class CRM_Historicalmemberships_Form_Search_MembershipSearch extends CRM_Contact
 				14 => 'Junior Dropped',
 				15 => 'Archived',
 				16 => 'Dropped',
-				17 => 'Medical Student Current'
+				17 => 'Medical Student Current',
+				18 => 'Junior Archived'
 			);
 			$status_rules_allowed = array(
 				1 => array( 1, 2, 3, 4, 5, 6, 7, 9, 15, 16 ),   //Active
@@ -379,7 +380,7 @@ class CRM_Historicalmemberships_Form_Search_MembershipSearch extends CRM_Contact
 				4 => array( 1, 2, 6, 7 ),   //Central Office
 				5 => array( 2, 6, 7 ),   //Honorary
 				6 => array( 2, 6, 7 ),   //Emeritus
-				7 => array( 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16 ),   //Junior
+				7 => array( 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 18 ),   //Junior
 				8 => array( 1, 2, 6, 7, 15, 16, 17 ),   //Medical Student
 				9 => array( 2, 6, 7 ),   //Education Membership
 				11 => array( 1, 2, 3, 4, 5, 6, 7),   //PECN
