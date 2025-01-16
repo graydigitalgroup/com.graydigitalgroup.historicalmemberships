@@ -323,7 +323,7 @@ LEFT JOIN `civicrm_option_value` as `gender` ON gender.value = contact_a.gender_
    * @return string, template path (findable through Smarty template path)
    */
   public function templateFile() {
-    return 'CRM/Contact/Form/Search/Custom.tpl';
+    return 'CRM/Contact/Form/Search/membership-search.tpl';
   }
 
   /**
